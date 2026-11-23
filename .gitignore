@@ -1,0 +1,40 @@
+﻿# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node.js / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+.vercel/
+*.tsbuildinfo
+
+# Local editor settings
+.vscode/
+
+# Temporary project and backups
+inventra-frontend-temp/
+frontend/app-backup-*/
+
+# Logs and local databases
+*.log
+*.sqlite
+*.sqlite3
+
+# Assistant backup files
+*.backup
+*_backup.py

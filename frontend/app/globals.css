@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F5F7FA;
+  --foreground: #172B3D;
+  --navy: #0F2740;
+  --deep-navy: #173A59;
+  --teal: #0F9488;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button {
+  cursor: pointer;
+}
+
+.sidebar {
+  display: flex;
+  width: 248px;
+  min-height: 100vh;
+  flex-shrink: 0;
+  flex-direction: column;
+  background: var(--navy);
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  padding: 12px;
+  color: #94A3B8;
+  font-size: 14px;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.sidebar-link:hover {
+  background: rgb(255 255 255 / 8%);
+  color: white;
+}
+
+.metric-card {
+  min-width: 0;
+  border: 1px solid #E7ECF1;
+  border-radius: 12px;
+  background: white;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgb(15 39 64 / 4%);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 16px rgb(15 39 64 / 7%);
+}
+
+.metric-icon {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+.panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #E7ECF1;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 1px 3px rgb(15 39 64 / 4%);
+}
+
+.section-title {
+  color: var(--deep-navy);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+@media (max-width: 1023px) {
+  .sidebar {
+    width: 100%;
+    min-height: auto;
+  }
+
+  .sidebar > div:last-child {
+    margin-top: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .metric-card {
+    padding: 16px;
+  }
+
+  .panel {
+    border-radius: 10px;
+  }
+}
