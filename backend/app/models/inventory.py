@@ -43,6 +43,10 @@ class InventoryItem(Base):
             "unit_cost >= 0",
             name="ck_inventory_unit_cost_nonnegative",
         ),
+        CheckConstraint(
+            "reserved_quantity <= on_hand_quantity",
+            name="ck_inventory_reserved_not_above_on_hand",
+        ),
         Index("ix_inventory_item_name", "item_name"),
     )
 

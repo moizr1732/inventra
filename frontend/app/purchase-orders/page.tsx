@@ -3,18 +3,15 @@
 
 import {
   AlertTriangle,
-  Boxes,
   Package,
   ShieldCheck,
   SlidersHorizontal,
-  TrendingUp,
   Search,
   Truck,
   ClipboardList,
   CalendarDays,
   RefreshCw,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ElementType } from "react";
 import {
@@ -22,6 +19,7 @@ import {
   type PurchaseOrder,
   type InventoryItem,
 } from "@/lib/api";
+import { AppShell } from "@/components/AppShell";
 
 function formatNumber(value: number | string | undefined | null) {
   return Number(value ?? 0).toLocaleString("en-US", {
@@ -69,93 +67,6 @@ function StatCard({
   );
 }
 
-function Sidebar() {
-  const sections = [
-    {
-      title: "WORKSPACE",
-      links: [
-        { label: "Dashboard", href: "/", icon: Boxes },
-        { label: "Inventory", href: "/inventory", icon: Package },
-        { label: "Forecasting", href: "/forecasting", icon: TrendingUp },
-        {
-          label: "Purchase Orders",
-          href: "/purchase-orders",
-          icon: SlidersHorizontal,
-        },
-        { label: "AI Assistant", href: "/assistant", icon: ShieldCheck },
-      ],
-    },
-    {
-      title: "MANAGEMENT",
-      links: [
-        { label: "Activity", href: "/activity", icon: TrendingUp },
-        { label: "Settings", href: "/settings", icon: SlidersHorizontal },
-        { label: "Help & Support", href: "/help", icon: AlertTriangle },
-      ],
-    },
-  ];
-
-  return (
-    <aside className="sidebar sticky top-0 flex h-screen w-64 shrink-0 self-start flex-col">
-      <div className="border-b border-white/10 px-6 py-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500 text-white">
-            <Boxes size={22} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-wide text-white">
-              INVENTRA
-            </h1>
-            <p className="text-xs text-slate-400">
-              Inventory Intelligence
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 space-y-8 overflow-y-auto px-4 py-7">
-        {sections.map((section) => (
-          <div key={section.title}>
-            <p className="mb-3 px-3 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
-              {section.title}
-            </p>
-            <div className="space-y-1">
-              {section.links.map((item) => {
-                const Icon = item.icon;
-                const active = item.href === "/purchase-orders";
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                      active
-                        ? "bg-white/10 font-semibold text-white"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <Icon size={17} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      <div className="border-t border-white/10 px-6 py-5">
-        <p className="text-xs font-medium text-slate-300">
-          Inventra Platform
-        </p>
-        <p className="mt-1 text-[11px] text-slate-500">
-          Demo environment
-        </p>
-      </div>
-    </aside>
-  );
-}
-
 function statusStyle(status: string) {
   switch (status.toLowerCase()) {
     case "received":
@@ -183,41 +94,58 @@ export default function PurchaseOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function loadData() {
+  async function fetchPurchaseData() {
+    const [orderData, inventoryData] = await Promise.all([
+      inventraApi.getPurchaseOrders(),
+      inventraApi.getInventory(),
+    ]);
+    return {
+      orders: Array.isArray(orderData) ? orderData : [],
+      inventory: Array.isArray(inventoryData) ? inventoryData : [],
+    };
+  }
+
+  // Initial load. The cancelled flag stops a stale response updating an unmounted view.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchPurchaseData()
+      .then((data) => {
+        if (cancelled) return;
+        setOrders(data.orders);
+        setInventory(data.inventory);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Failed to load purchase orders:", err);
+        setError(err instanceof Error ? err.message : "Unable to load purchase orders.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function refresh() {
     setLoading(true);
     setError("");
-
     try {
-      const [orderData, inventoryData] = await Promise.all([
-        inventraApi.getPurchaseOrders(),
-        inventraApi.getInventory(),
-      ]);
-
-      setOrders(Array.isArray(orderData) ? orderData : []);
-      setInventory(Array.isArray(inventoryData) ? inventoryData : []);
+      const data = await fetchPurchaseData();
+      setOrders(data.orders);
+      setInventory(data.inventory);
     } catch (err) {
-      console.error("Failed to load purchase orders:", err);
-      setError(
-        "Unable to load purchase orders. Check that the Inventra backend is running."
-      );
+      console.error("Failed to refresh purchase orders:", err);
+      setError(err instanceof Error ? err.message : "Unable to load purchase orders.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const itemNames = useMemo(() => {
-    return Object.fromEntries(
-      inventory.map((item) => [
-        item.id,
-        item.item_name?.toLowerCase() === "string"
-          ? "Unidentified inventory item"
-          : item.item_name,
-      ])
-    );
+    return Object.fromEntries(inventory.map((item) => [item.id, item.item_name]));
   }, [inventory]);
 
   const filteredOrders = useMemo(() => {
@@ -259,8 +187,7 @@ export default function PurchaseOrdersPage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-[#F5F7FA]">
-      <Sidebar />
+    <AppShell>
 
       <main className="min-w-0 flex-1 overflow-x-hidden">
         <header className="flex min-h-[76px] items-center justify-between border-b border-slate-200 bg-white px-8 py-3">
@@ -296,7 +223,7 @@ export default function PurchaseOrdersPage() {
             </div>
 
             <button
-              onClick={loadData}
+              onClick={refresh}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
             >
@@ -430,10 +357,6 @@ export default function PurchaseOrdersPage() {
                     </tr>
                   ) : (
                     filteredOrders.map((order) => {
-                      const isPlaceholder =
-                        order.po_number.toLowerCase() === "string" ||
-                        order.supplier_name.toLowerCase() === "string";
-
                       return (
                         <tr
                           key={order.id}
@@ -445,11 +368,6 @@ export default function PurchaseOrdersPage() {
                             </p>
                             <p className="mt-1 text-[11px] text-slate-400">
                               PO ID: {order.id}
-                              {isPlaceholder && (
-                                <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">
-                                  Test record
-                                </span>
-                              )}
                             </p>
                           </td>
                           <td className="px-4 py-4 text-sm text-slate-600">
@@ -470,7 +388,7 @@ export default function PurchaseOrdersPage() {
                             {formatDate(order.order_date)}
                           </td>
                           <td className="px-4 py-4 text-sm text-slate-600">
-                            {formatDate(order.expected_delivery_date)}
+                            {formatDate(order.expected_delivery_date ?? "")}
                           </td>
                           <td className="px-4 py-4 text-sm font-medium text-slate-700">
                             {formatNumber(order.ordered_quantity)}
@@ -585,6 +503,6 @@ export default function PurchaseOrdersPage() {
           </p>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

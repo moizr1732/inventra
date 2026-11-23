@@ -1,0 +1,10 @@
+# Runtime dependencies for the Inventra API. Versions verified against the test suite.
+fastapi==0.165.0
+starlette==1.10.0
+pydantic==2.14.4
+pydantic-settings==2.16.3
+SQLAlchemy==2.0.58
+alembic==1.20.1
+psycopg[binary]==3.3.9
+httpx==0.28.1
+uvicorn[standard]==0.54.0

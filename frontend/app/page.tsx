@@ -1,16 +1,13 @@
 
 import Link from "next/link";
 import {
-  Activity,
   AlertTriangle,
   ArrowDownRight,
   ArrowRight,
   Boxes,
   CheckCircle2,
-  ClipboardList,
   Package,
   ShieldCheck,
-  ShoppingCart,
   TrendingUp,
   Truck,
 } from "lucide-react";
@@ -21,22 +18,9 @@ import {
   type PurchaseOrder,
   type StockRisk,
 } from "@/lib/api";
+import { AppShell } from "@/components/AppShell";
 
 export const dynamic = "force-dynamic";
-
-const navigation = [
-  { label: "Dashboard", href: "/", icon: Boxes },
-  { label: "Inventory", href: "/inventory", icon: Package },
-  { label: "Forecasting", href: "/forecasting", icon: TrendingUp },
-  { label: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart },
-  { label: "AI Assistant", href: "/assistant", icon: ShieldCheck },
-];
-
-const management = [
-  { label: "Activity", href: "/activity", icon: Activity },
-  { label: "Settings", href: "/settings", icon: ClipboardList },
-  { label: "Help & Support", href: "/help", icon: AlertTriangle },
-];
 
 function number(value: number | string | null | undefined) {
   return Number(value ?? 0).toLocaleString("en-US", {
@@ -44,83 +28,12 @@ function number(value: number | string | null | undefined) {
   });
 }
 
-function validInventory(item: InventoryItem) {
+/** An item needs attention when its risk is critical or low, or when it must be reordered. */
+function needsAttention(risk: StockRisk) {
   return (
-    item.is_active &&
-    item.item_code?.trim() &&
-    item.item_name?.trim() &&
-    item.item_code.toLowerCase() !== "string" &&
-    item.item_name.toLowerCase() !== "string"
-  );
-}
-
-function validOrder(order: PurchaseOrder) {
-  return (
-    order.po_number?.trim() &&
-    order.supplier_name?.trim() &&
-    order.po_number.toLowerCase() !== "string" &&
-    order.supplier_name.toLowerCase() !== "string"
-  );
-}
-
-function Sidebar() {
-  return (
-    <aside className="sidebar sticky top-0 flex h-screen w-64 shrink-0 flex-col">
-      <div className="border-b border-white/10 px-6 py-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500 text-white">
-            <Boxes size={22} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-wide text-white">INVENTRA</h1>
-            <p className="text-xs text-slate-400">Inventory Intelligence</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <p className="mb-3 px-3 text-[10px] font-bold tracking-[0.16em] text-slate-500">
-          WORKSPACE
-        </p>
-        <nav className="space-y-1">
-          {navigation.map(({ label, href, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`sidebar-link ${href === "/" ? "bg-white/10 text-white" : ""}`}
-            >
-              <Icon size={18} />
-              {label}
-              {href === "/" && <span className="ml-auto h-2 w-2 rounded-full bg-teal-400" />}
-            </Link>
-          ))}
-        </nav>
-
-        <p className="mb-3 mt-9 px-3 text-[10px] font-bold tracking-[0.16em] text-slate-500">
-          MANAGEMENT
-        </p>
-        <nav className="space-y-1">
-          {management.map(({ label, href, icon: Icon }) => (
-            <Link key={href} href={href} className="sidebar-link">
-              <Icon size={18} />
-              {label}
-            </Link>
-          ))}
-        </nav>
-      </div>
-
-      <div className="border-t border-white/10 p-4">
-        <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-500/20 text-teal-300">
-            <ShieldCheck size={18} />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-white">Inventra Workspace</p>
-            <p className="text-[10px] text-slate-400">Read-only intelligence</p>
-          </div>
-        </div>
-      </div>
-    </aside>
+    risk.requires_replenishment ||
+    risk.risk_level === "critical" ||
+    risk.risk_level === "low_stock"
   );
 }
 
@@ -162,14 +75,10 @@ async function getDashboardData() {
   ]);
 
   const inventory: InventoryItem[] =
-    inventoryResult.status === "fulfilled"
-      ? inventoryResult.value.filter(validInventory)
-      : [];
+    inventoryResult.status === "fulfilled" ? inventoryResult.value : [];
 
   const orders: PurchaseOrder[] =
-    ordersResult.status === "fulfilled"
-      ? ordersResult.value.filter(validOrder)
-      : [];
+    ordersResult.status === "fulfilled" ? ordersResult.value : [];
 
   const riskResults = await Promise.allSettled(
     inventory.map((item) => inventraApi.getStockRisk(item.id))
@@ -196,15 +105,9 @@ async function getDashboardData() {
     inventoryAvailable: inventoryResult.status === "fulfilled",
     ordersAvailable: ordersResult.status === "fulfilled",
     risksAvailable: riskResults.every((result) => result.status === "fulfilled"),
-    totalAvailable: inventory.reduce(
-      (sum, item) => sum + Number(item.available_quantity || 0),
-      0
-    ),
-    lowStock: risks.filter(
-      (risk) =>
-        risk.requires_replenishment ||
-        ["high", "critical"].includes(risk.risk_level.toLowerCase())
-    ),
+    criticalCount: risks.filter((risk) => risk.risk_level === "critical").length,
+    attentionRisks: risks.filter(needsAttention),
+    replenishmentCount: risks.filter((risk) => risk.requires_replenishment).length,
     activeOrders: orders.filter((order) =>
       activeStatuses.includes(order.status.toLowerCase())
     ),
@@ -241,8 +144,7 @@ export default async function DashboardPage() {
     !data.inventoryAvailable || !data.ordersAvailable || !data.risksAvailable;
 
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row">
-      <Sidebar />
+    <AppShell>
 
       <main className="min-w-0 flex-1">
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-5 sm:px-8">
@@ -255,9 +157,15 @@ export default async function DashboardPage() {
               Monitor inventory health and procurement performance.
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Live data overview
+          <div
+            className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${
+              hasErrors
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-emerald-100 bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${hasErrors ? "bg-amber-500" : "bg-emerald-500"}`} />
+            {hasErrors ? "Partial data" : "Live data"}
           </div>
         </header>
 
@@ -292,16 +200,16 @@ export default async function DashboardPage() {
                 accent="#0D9488"
               />
               <MetricCard
-                title="Available stock"
-                value={data.inventoryAvailable ? number(data.totalAvailable) : "—"}
-                description="Combined quantity across units"
+                title="Critical items"
+                value={data.risksAvailable ? number(data.criticalCount) : "—"}
+                description="Stock covers less than the lead time"
                 icon={Boxes}
-                accent="#2563EB"
+                accent="#DC2626"
               />
               <MetricCard
-                title="Replenishment risks"
-                value={data.risksAvailable ? number(data.lowStock.length) : "—"}
-                description="Items requiring replenishment"
+                title="Items to reorder"
+                value={data.risksAvailable ? number(data.replenishmentCount) : "—"}
+                description="Suggested purchase needed now"
                 icon={AlertTriangle}
                 accent="#D97706"
               />
@@ -334,8 +242,7 @@ export default async function DashboardPage() {
                   </div>
                 ) : (
                   data.risks.map((risk) => {
-                    const isRisk = risk.requires_replenishment ||
-                      ["high", "critical"].includes(risk.risk_level.toLowerCase());
+                    const isRisk = needsAttention(risk);
 
                     return (
                       <div key={risk.item_id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
@@ -481,6 +388,6 @@ export default async function DashboardPage() {
           </footer>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
