@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import type { ElementType } from "react";
 import InventoryTable from "./InventoryTable";
+import { needsAttention } from "@/lib/risk";
 
 import {
   inventraApi,
@@ -99,24 +100,15 @@ export default async function InventoryPage() {
 
   const totalItems = items.length;
 
-  const totalAvailable = items.reduce(
-    (sum, item) => sum + Number(item.available_quantity ?? 0),
-    0
-  );
+  // Quantities are not summed across items: units of measure differ, so a total would mislead.
+  const criticalCount = items.filter(
+    (item) => risks[item.id]?.risk_level === "critical"
+  ).length;
 
-  const lowStock = items.filter((item) => {
-    const risk = risks[item.id];
-
-    return (
-      risk?.requires_replenishment === true ||
-      ["critical", "high"].includes(
-        risk?.risk_level?.toLowerCase() ?? ""
-      )
-    );
-  }).length;
+  const attentionCount = items.filter((item) => needsAttention(risks[item.id])).length;
 
   const normalStock = items.filter(
-    (item) => risks[item.id]?.risk_level?.toLowerCase() === "normal"
+    (item) => risks[item.id]?.risk_level === "normal"
   ).length;
 
   const normalPercentage =
@@ -175,16 +167,16 @@ export default async function InventoryPage() {
             />
 
             <StatCard
-              title="Available Stock"
-              value={formatNumber(totalAvailable)}
-              description="Combined available quantity"
+              title="Critical Items"
+              value={formatNumber(criticalCount)}
+              description="Stock covers less than the lead time"
               icon={Boxes}
             />
 
             <StatCard
               title="Items Requiring Attention"
-              value={formatNumber(lowStock)}
-              description="High or critical stock risk"
+              value={formatNumber(attentionCount)}
+              description="Critical, low stock or to reorder now"
               icon={AlertTriangle}
             />
 
@@ -264,7 +256,7 @@ export default async function InventoryPage() {
               <div className="mt-6 flex items-center justify-between">
                 <div>
                   <p className="text-3xl font-semibold text-slate-900">
-                    {lowStock}
+                    {attentionCount}
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500">

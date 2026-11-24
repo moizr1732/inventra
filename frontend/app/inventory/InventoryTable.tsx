@@ -11,6 +11,14 @@ import {
   X,
 } from "lucide-react";
 import type { InventoryItem, StockRisk } from "@/lib/api";
+import {
+  RISK_FILTERS,
+  RISK_TONE_CLASSES,
+  matchesRiskFilter,
+  riskLabel,
+  riskTone,
+  type RiskFilter,
+} from "@/lib/risk";
 
 type Props = {
   items: InventoryItem[];
@@ -23,24 +31,9 @@ function formatNumber(value: number | string | undefined | null) {
   });
 }
 
-function riskStyle(level: string) {
-  switch (level.toLowerCase()) {
-    case "critical":
-      return "border-red-200 bg-red-50 text-red-700";
-    case "high":
-      return "border-orange-200 bg-orange-50 text-orange-700";
-    case "medium":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-    case "normal":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    default:
-      return "border-slate-200 bg-slate-50 text-slate-500";
-  }
-}
-
 export default function InventoryTable({ items, risks }: Props) {
   const [search, setSearch] = useState("");
-  const [riskFilter, setRiskFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
   const categories = useMemo(
@@ -65,18 +58,7 @@ export default function InventoryTable({ items, risks }: Props) {
         item.item_code?.toLowerCase().includes(term);
 
       const risk = risks[item.id];
-      const level = risk?.risk_level?.toLowerCase() ?? "unavailable";
-
-      const matchesRisk =
-        riskFilter === "all" ||
-        (riskFilter === "attention" &&
-          (risk?.requires_replenishment === true ||
-            ["critical", "high"].includes(level))) ||
-        (riskFilter === "normal" && level === "normal") ||
-        (riskFilter === "medium" && level === "medium") ||
-        (riskFilter === "high" && level === "high") ||
-        (riskFilter === "critical" && level === "critical") ||
-        (riskFilter === "unavailable" && !risk);
+      const matchesRisk = matchesRiskFilter(riskFilter, risk);
 
       const matchesCategory =
         categoryFilter === "all" || item.category === categoryFilter;
@@ -137,17 +119,15 @@ export default function InventoryTable({ items, risks }: Props) {
           />
           <select
             value={riskFilter}
-            onChange={(event) => setRiskFilter(event.target.value)}
+            onChange={(event) => setRiskFilter(event.target.value as RiskFilter)}
             aria-label="Filter by risk level"
             className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           >
-            <option value="all">All risk levels</option>
-            <option value="attention">Requires attention</option>
-            <option value="normal">Normal</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="critical">Critical</option>
-            <option value="unavailable">Risk unavailable</option>
+            {RISK_FILTERS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -220,7 +200,7 @@ export default function InventoryTable({ items, risks }: Props) {
             <tbody className="divide-y divide-slate-100">
               {filteredItems.map((item) => {
                 const risk = risks[item.id];
-                const level = risk?.risk_level ?? "Unavailable";
+                const tone = RISK_TONE_CLASSES[riskTone(risk?.risk_level)];
 
                 return (
                   <tr
@@ -257,12 +237,10 @@ export default function InventoryTable({ items, risks }: Props) {
                     </td>
                     <td className="px-6 py-5">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${riskStyle(
-                          level
-                        )}`}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${tone}`}
                       >
                         {risk ? (
-                          level.toLowerCase() === "normal" ? (
+                          risk.risk_level === "normal" ? (
                             <CheckCircle2 size={13} />
                           ) : (
                             <AlertTriangle size={13} />
@@ -270,7 +248,7 @@ export default function InventoryTable({ items, risks }: Props) {
                         ) : (
                           <AlertTriangle size={13} />
                         )}
-                        {level}
+                        {riskLabel(risk?.risk_level)}
                       </span>
                       {risk?.requires_replenishment && (
                         <p className="mt-1 text-[10px] font-medium text-amber-700">

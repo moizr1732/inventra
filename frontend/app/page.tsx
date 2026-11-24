@@ -19,6 +19,7 @@ import {
   type StockRisk,
 } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
+import { needsAttention } from "@/lib/risk";
 
 export const dynamic = "force-dynamic";
 
@@ -26,15 +27,6 @@ function number(value: number | string | null | undefined) {
   return Number(value ?? 0).toLocaleString("en-US", {
     maximumFractionDigits: 2,
   });
-}
-
-/** An item needs attention when its risk is critical or low, or when it must be reordered. */
-function needsAttention(risk: StockRisk) {
-  return (
-    risk.requires_replenishment ||
-    risk.risk_level === "critical" ||
-    risk.risk_level === "low_stock"
-  );
 }
 
 function MetricCard({
@@ -238,7 +230,7 @@ export default async function DashboardPage() {
               <div className="divide-y divide-slate-100">
                 {data.risks.length === 0 ? (
                   <div className="p-8 text-center text-sm text-slate-500">
-                    {data.risksAvailable ? "No valid inventory risk records found." : "Stock risk data is unavailable."}
+                    {data.risksAvailable ? "No inventory risk records found." : "Stock risk data is unavailable."}
                   </div>
                 ) : (
                   data.risks.map((risk) => {
@@ -316,7 +308,7 @@ export default async function DashboardPage() {
 
             {recentOrders.length === 0 ? (
               <p className="p-8 text-center text-sm text-slate-500">
-                {data.ordersAvailable ? "No valid purchase orders found." : "Purchase order data is unavailable."}
+                {data.ordersAvailable ? "No purchase orders found." : "Purchase order data is unavailable."}
               </p>
             ) : (
               <div className="overflow-x-auto">

@@ -20,6 +20,7 @@ Frontend (from `frontend/`):
     npx tsc --noEmit
     npm run build
     npm start                   # http://localhost:3000
+    npm test                    # 82 frontend tests (Vitest + Testing Library)
 
 Demo data: `python -m app.database.seed_consumption` adds 120 days of
 synthetic consumption. It does not change on-hand quantities.
@@ -63,6 +64,13 @@ synthetic consumption. It does not change on-hand quantities.
   and the empty `forecast_calculations.py` and `procurement/` placeholders.
 
 ## Frontend changes
+
+- Shared risk vocabulary in `lib/risk.ts`. The inventory table, inventory page and
+  dashboard use the backend's real levels (`critical`, `low_stock`, `no_demand_data`,
+  `normal`, `overstock`). The retired `high` and `medium` levels are removed.
+- Inventory summary no longer adds quantities across units of measure.
+- Frontend tests in `__tests__/` cover the API client, risk rules, app shell,
+  inventory table, dashboard, forecasting, purchase orders and assistant.
 
 - One responsive `AppShell` (sidebar on wide screens, drawer on small screens)
   replaces four copies of the navigation. Dead Activity and Settings links are
