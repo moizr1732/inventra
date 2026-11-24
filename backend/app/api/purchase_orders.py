@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.schemas.purchase_order import (
     PurchaseOrderReceive,
@@ -42,16 +43,20 @@ def create_purchase_order(
 
     item = db.get(InventoryItem, order_data.inventory_item_id)
 
-    if not item:
+    if not item or not item.is_active:
         raise HTTPException(
             status_code=404,
-            detail="Inventory item not found.",
+            detail="Active inventory item not found.",
         )
 
     order = PurchaseOrder(**order_data.model_dump())
 
     db.add(order)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Purchase order number already exists.")
     db.refresh(order)
 
     return {

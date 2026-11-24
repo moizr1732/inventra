@@ -1,15 +1,11 @@
 
 import {
   AlertTriangle,
-  Boxes,
   CalendarDays,
   Package,
-  ShieldCheck,
-  SlidersHorizontal,
   TrendingUp,
   Activity,
 } from "lucide-react";
-import Link from "next/link";
 import type { ElementType } from "react";
 
 import {
@@ -17,6 +13,7 @@ import {
   type InventoryItem,
   type ForecastResponse,
 } from "@/lib/api";
+import { AppShell } from "@/components/AppShell";
 
 export const dynamic = "force-dynamic";
 
@@ -64,95 +61,6 @@ function StatCard({
   );
 }
 
-function Sidebar() {
-  const sections = [
-    {
-      title: "WORKSPACE",
-      links: [
-        { label: "Dashboard", href: "/", icon: Boxes },
-        { label: "Inventory", href: "/inventory", icon: Package },
-        { label: "Forecasting", href: "/forecasting", icon: TrendingUp },
-        {
-          label: "Purchase Orders",
-          href: "/purchase-orders",
-          icon: SlidersHorizontal,
-        },
-        { label: "AI Assistant", href: "/assistant", icon: ShieldCheck },
-      ],
-    },
-    {
-      title: "MANAGEMENT",
-      links: [
-        { label: "Activity", href: "/activity", icon: Activity },
-        { label: "Settings", href: "/settings", icon: SlidersHorizontal },
-        { label: "Help & Support", href: "/help", icon: AlertTriangle },
-      ],
-    },
-  ];
-
-  return (
-    <aside className="sidebar sticky top-0 flex h-screen w-64 shrink-0 self-start flex-col">
-      <div className="border-b border-white/10 px-6 py-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500 text-white">
-            <Boxes size={22} />
-          </div>
-
-          <div>
-            <h1 className="text-xl font-bold tracking-wide text-white">
-              INVENTRA
-            </h1>
-            <p className="text-xs text-slate-400">
-              Inventory Intelligence
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 space-y-8 overflow-y-auto px-4 py-7">
-        {sections.map((section) => (
-          <div key={section.title}>
-            <p className="mb-3 px-3 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
-              {section.title}
-            </p>
-
-            <div className="space-y-1">
-              {section.links.map((item) => {
-                const Icon = item.icon;
-                const active = item.href === "/forecasting";
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                      active
-                        ? "bg-white/10 font-semibold text-white"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <Icon size={17} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      <div className="border-t border-white/10 px-6 py-5">
-        <p className="text-xs font-medium text-slate-300">
-          Inventra Platform
-        </p>
-        <p className="mt-1 text-[11px] text-slate-500">
-          Demo environment
-        </p>
-      </div>
-    </aside>
-  );
-}
-
 async function getForecastData(): Promise<{
   forecasts: ForecastResponse[];
   errors: string[];
@@ -162,14 +70,7 @@ async function getForecastData(): Promise<{
 
     const items: InventoryItem[] = (
       Array.isArray(response) ? response : []
-    ).filter(
-      (item) =>
-        item.is_active !== false &&
-        item.item_code?.trim() &&
-        item.item_code.toLowerCase() !== "string" &&
-        item.item_name?.trim() &&
-        item.item_name.toLowerCase() !== "string"
-    );
+    ).filter((item) => item.is_active !== false);
 
     const results = await Promise.all(
       items.map(async (item) => {
@@ -211,12 +112,14 @@ function DemandChart({
   values,
   labels,
   color,
+  unit,
 }: {
   title: string;
   subtitle: string;
   values: number[];
   labels: string[];
   color: "teal" | "blue";
+  unit: string;
 }) {
   const maxValue = Math.max(...values, 1);
 
@@ -268,7 +171,7 @@ function DemandChart({
               className={`h-2.5 w-2.5 rounded-sm ${barColor}`}
             />
             <span className="text-xs text-slate-500">
-              Demand quantity (meters)
+              Demand quantity ({unit})
             </span>
           </div>
         </>
@@ -315,10 +218,18 @@ function ForecastCard({
             Total predicted demand
           </p>
           <p className="mt-1 text-xl font-semibold text-slate-900">
-            {formatNumber(totalForecast)} m
+            {forecast.forecasts.length > 0
+              ? `${formatNumber(totalForecast)} ${forecast.unit_of_measure}`
+              : "—"}
           </p>
         </div>
       </div>
+
+      {forecast.status !== "ok" && (
+        <p className="mx-6 mt-6 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+          {forecast.status_message}
+        </p>
+      )}
 
       <div className="p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -371,7 +282,9 @@ function ForecastCard({
               <p className="mt-1 text-xs leading-5 text-slate-600">
                 Average monthly historical demand is{" "}
                 <strong>
-                  {formatNumber(forecast.average_monthly_demand)} m
+                  {forecast.average_monthly_demand === null
+                    ? "—"
+                    : `${formatNumber(forecast.average_monthly_demand)} ${forecast.unit_of_measure}`}
                 </strong>
                 . The backend currently predicts the demand shown above
                 for each upcoming 30-day period.
@@ -387,27 +300,12 @@ function ForecastCard({
 export default async function ForecastingPage() {
   const { forecasts, errors } = await getForecastData();
 
-  const totalItems = forecasts.length;
+  const withForecast = forecasts.filter((f) => f.status === "ok");
+  const awaitingHistory = forecasts.filter((f) => f.status === "insufficient_data").length;
+  const noDemand = forecasts.filter((f) => f.status === "no_demand").length;
 
-  const averageMonthlyDemand =
-    totalItems > 0
-      ? forecasts.reduce(
-          (sum, item) => sum + item.average_monthly_demand,
-          0
-        ) / totalItems
-      : 0;
-
-  const totalPredictedDemand = forecasts.reduce(
-    (sum, item) =>
-      sum +
-      item.forecasts.reduce(
-        (periodSum, period) => periodSum + period.predicted_demand,
-        0
-      ),
-    0
-  );
-
-  const firstForecast = forecasts[0];
+  const firstForecast = withForecast[0] ?? forecasts[0];
+  const chartUnit = firstForecast?.unit_of_measure ?? "units";
 
   const historicalValues =
     firstForecast?.historical_demand ?? [];
@@ -427,8 +325,7 @@ export default async function ForecastingPage() {
     ) ?? [];
 
   return (
-    <div className="flex min-h-screen bg-[#F5F7FA]">
-      <Sidebar />
+    <AppShell>
 
       <main className="min-w-0 flex-1 overflow-x-hidden">
         <header className="flex h-[76px] items-center justify-between border-b border-slate-200 bg-white px-8">
@@ -474,30 +371,30 @@ export default async function ForecastingPage() {
           <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               title="Forecasted Items"
-              value={formatNumber(totalItems)}
-              description="Active items with forecast data"
+              value={formatNumber(withForecast.length)}
+              description="Items with a usable forecast"
               icon={Package}
             />
 
             <StatCard
-              title="Average Monthly Demand"
-              value={`${formatNumber(averageMonthlyDemand)} m`}
-              description="Average across forecasted items"
+              title="Awaiting History"
+              value={formatNumber(awaitingHistory)}
+              description="New items with under 90 days of data"
+              icon={CalendarDays}
+            />
+
+            <StatCard
+              title="No Recorded Demand"
+              value={formatNumber(noDemand)}
+              description="Items with no consumption in the history window"
               icon={Activity}
             />
 
             <StatCard
-              title="90-Day Predicted Demand"
-              value={`${formatNumber(totalPredictedDemand)} m`}
-              description="Combined three-period forecast"
-              icon={TrendingUp}
-            />
-
-            <StatCard
               title="Forecast Horizon"
-              value={firstForecast ? "90 Days" : "N/A"}
-              description="Three upcoming 30-day periods"
-              icon={CalendarDays}
+              value="3 x 30 days"
+              description="Fixed 30-day periods"
+              icon={TrendingUp}
             />
           </section>
 
@@ -518,6 +415,7 @@ export default async function ForecastingPage() {
                 values={historicalValues}
                 labels={historicalLabels}
                 color="blue"
+                unit={chartUnit}
               />
 
               <DemandChart
@@ -526,6 +424,7 @@ export default async function ForecastingPage() {
                 values={forecastValues}
                 labels={forecastLabels}
                 color="teal"
+                unit={chartUnit}
               />
             </section>
           )}
@@ -595,6 +494,6 @@ export default async function ForecastingPage() {
           </p>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

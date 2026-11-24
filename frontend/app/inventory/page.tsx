@@ -4,18 +4,17 @@ import {
   Boxes,
   Package,
   ShieldCheck,
-  SlidersHorizontal,
-  TrendingUp,
 } from "lucide-react";
-import Link from "next/link";
 import type { ElementType } from "react";
 import InventoryTable from "./InventoryTable";
+import { needsAttention } from "@/lib/risk";
 
 import {
   inventraApi,
   type InventoryItem,
   type StockRisk,
 } from "@/lib/api";
+import { AppShell } from "@/components/AppShell";
 
 export const dynamic = "force-dynamic";
 
@@ -52,95 +51,6 @@ function StatCard({
         </div>
       </div>
     </div>
-  );
-}
-
-function Sidebar() {
-  const sections = [
-    {
-      title: "WORKSPACE",
-      links: [
-        { label: "Dashboard", href: "/", icon: Boxes },
-        { label: "Inventory", href: "/inventory", icon: Package },
-        { label: "Forecasting", href: "/forecasting", icon: TrendingUp },
-        {
-          label: "Purchase Orders",
-          href: "/purchase-orders",
-          icon: SlidersHorizontal,
-        },
-        { label: "AI Assistant", href: "/assistant", icon: ShieldCheck },
-      ],
-    },
-    {
-      title: "MANAGEMENT",
-      links: [
-        { label: "Activity", href: "/activity", icon: TrendingUp },
-        { label: "Settings", href: "/settings", icon: SlidersHorizontal },
-        { label: "Help & Support", href: "/help", icon: AlertTriangle },
-      ],
-    },
-  ];
-
-  return (
-    <aside className="sidebar sticky top-0 flex h-screen w-64 shrink-0 self-start flex-col">
-      <div className="border-b border-white/10 px-6 py-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500 text-white">
-            <Boxes size={22} />
-          </div>
-
-          <div>
-            <h1 className="text-xl font-bold tracking-wide text-white">
-              INVENTRA
-            </h1>
-            <p className="text-xs text-slate-400">
-              Inventory Intelligence
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 space-y-8 overflow-y-auto px-4 py-7">
-        {sections.map((section) => (
-          <div key={section.title}>
-            <p className="mb-3 px-3 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
-              {section.title}
-            </p>
-
-            <div className="space-y-1">
-              {section.links.map((item) => {
-                const Icon = item.icon;
-                const active = item.href === "/inventory";
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                      active
-                        ? "bg-white/10 font-semibold text-white"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <Icon size={17} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      <div className="border-t border-white/10 px-6 py-5">
-        <p className="text-xs font-medium text-slate-300">
-          Inventra Platform
-        </p>
-        <p className="mt-1 text-[11px] text-slate-500">
-          Demo environment
-        </p>
-      </div>
-    </aside>
   );
 }
 
@@ -190,32 +100,22 @@ export default async function InventoryPage() {
 
   const totalItems = items.length;
 
-  const totalAvailable = items.reduce(
-    (sum, item) => sum + Number(item.available_quantity ?? 0),
-    0
-  );
+  // Quantities are not summed across items: units of measure differ, so a total would mislead.
+  const criticalCount = items.filter(
+    (item) => risks[item.id]?.risk_level === "critical"
+  ).length;
 
-  const lowStock = items.filter((item) => {
-    const risk = risks[item.id];
-
-    return (
-      risk?.requires_replenishment === true ||
-      ["critical", "high"].includes(
-        risk?.risk_level?.toLowerCase() ?? ""
-      )
-    );
-  }).length;
+  const attentionCount = items.filter((item) => needsAttention(risks[item.id])).length;
 
   const normalStock = items.filter(
-    (item) => risks[item.id]?.risk_level?.toLowerCase() === "normal"
+    (item) => risks[item.id]?.risk_level === "normal"
   ).length;
 
   const normalPercentage =
     totalItems > 0 ? Math.round((normalStock / totalItems) * 100) : 0;
 
   return (
-    <div className="flex min-h-screen bg-[#F5F7FA]">
-      <Sidebar />
+    <AppShell>
 
       <main className="min-w-0 flex-1 overflow-x-hidden">
         <header className="flex h-[76px] items-center justify-between border-b border-slate-200 bg-white px-8">
@@ -267,16 +167,16 @@ export default async function InventoryPage() {
             />
 
             <StatCard
-              title="Available Stock"
-              value={formatNumber(totalAvailable)}
-              description="Combined available quantity"
+              title="Critical Items"
+              value={formatNumber(criticalCount)}
+              description="Stock covers less than the lead time"
               icon={Boxes}
             />
 
             <StatCard
               title="Items Requiring Attention"
-              value={formatNumber(lowStock)}
-              description="High or critical stock risk"
+              value={formatNumber(attentionCount)}
+              description="Critical, low stock or to reorder now"
               icon={AlertTriangle}
             />
 
@@ -356,7 +256,7 @@ export default async function InventoryPage() {
               <div className="mt-6 flex items-center justify-between">
                 <div>
                   <p className="text-3xl font-semibold text-slate-900">
-                    {lowStock}
+                    {attentionCount}
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500">
@@ -382,6 +282,6 @@ export default async function InventoryPage() {
           </p>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

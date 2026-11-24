@@ -33,6 +33,18 @@ class AssistantConversation(Base):
         nullable=False,
     )
 
+    # Inventory item the conversation is currently about. Stores only the ID;
+    # all facts about the item are re-read from PostgreSQL on every turn.
+    context_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("inventory_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Watermark: the last user message folded into `summary`.
+    summarized_through_id: Mapped[int | None] = mapped_column(
+        nullable=True,
+    )
+
     # Rolling summary for long conversations.
     # This stores conversational context, not current business facts.
     summary: Mapped[str | None] = mapped_column(

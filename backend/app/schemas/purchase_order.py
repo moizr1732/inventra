@@ -48,27 +48,6 @@ class PurchaseOrderCreate(BaseModel):
                 "Expected delivery date cannot be before order date."
             )
 
-        if (
-            self.status == "received"
-            and self.received_quantity != self.ordered_quantity
-        ):
-            raise ValueError(
-                "A received order must have all its quantity received."
-            )
-
-        if (
-            self.status == "partially_received"
-            and not (
-                Decimal("0")
-                < self.received_quantity
-                < self.ordered_quantity
-            )
-        ):
-            raise ValueError(
-                "A partially received order must have some, "
-                "but not all, quantity received."
-            )
-
         return self
 
 

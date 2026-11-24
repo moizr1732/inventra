@@ -51,6 +51,22 @@ class InventoryItemUpdate(BaseModel):
 
     is_active: bool | None = None
 
+    @model_validator(mode="after")
+    def reject_explicit_nulls(self):
+        non_nullable = {
+            "item_name", "unit_of_measure", "on_hand_quantity", "reserved_quantity",
+            "reorder_level", "safety_stock", "lead_time_days", "unit_cost", "is_active",
+        }
+        provided_nulls = [
+            name for name in self.model_fields_set
+            if name in non_nullable and getattr(self, name) is None
+        ]
+        if provided_nulls:
+            raise ValueError(
+                "These fields cannot be cleared: " + ", ".join(sorted(provided_nulls))
+            )
+        return self
+
 
 class InventoryItemResponse(InventoryItemBase):
     model_config = ConfigDict(from_attributes=True)

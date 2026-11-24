@@ -1,12 +1,9 @@
-
-from sqlalchemy import URL, create_engine, text
+from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 
 
-# Build the database URL safely, even if your password
-# contains special characters.
 DATABASE_URL = URL.create(
     drivername="postgresql+psycopg",
     username=settings.POSTGRES_USER,
@@ -16,24 +13,11 @@ DATABASE_URL = URL.create(
     database=settings.POSTGRES_DB,
 )
 
-
-# Create the SQLAlchemy database engine.
+# connect_timeout keeps requests from hanging when PostgreSQL is down.
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
+    connect_args={"connect_timeout": 5},
 )
 
-
-# Create database sessions for application requests.
-SessionLocal = sessionmaker(
-    bind=engine,
-    autoflush=False,
-    autocommit=False,
-)
-
-
-# Simple database connection test.
-def test_database_connection():
-    with engine.connect() as connection:
-        connection.execute(text("SELECT 1"))
-    return True
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
