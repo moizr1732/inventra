@@ -12,7 +12,6 @@ os.environ.setdefault("POSTGRES_PASSWORD", "testpass")
 os.environ.setdefault("POSTGRES_HOST", "127.0.0.1")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("POSTGRES_DB", "inventra_test")
-os.environ["ASSISTANT_LLM_ENABLED"] = "false"
 os.environ["GROQ_API_KEY"] = ""
 
 import pytest  # noqa: E402

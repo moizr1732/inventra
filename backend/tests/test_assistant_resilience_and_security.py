@@ -7,28 +7,36 @@ from app.main import app
 from tests.helpers import count_rows, make_item
 
 
-class _FakeHttpClient:
-    """Stand-in for httpx.Client used only by the Groq module, so the test
-    client's own HTTP calls are unaffected."""
+class _FakeAsyncClient:
+    """Stand-in for httpx.AsyncClient, used only by these tests. It replaces the
+    client reference seen by the Groq module, so the test client is unaffected."""
 
-    def __init__(self, error=None, response=None):
+    def __init__(self, error=None, content=None, status=200):
         self._error = error
-        self._response = response
+        self._content = content
+        self._status = status
+        self.calls = []
 
-    def __enter__(self):
+    async def __aenter__(self):
         return self
 
-    def __exit__(self, *exc):
+    async def __aexit__(self, *exc):
         return False
 
-    def post(self, *args, **kwargs):
+    async def post(self, url, headers=None, json=None):
+        self.calls.append({"url": url, "json": json})
         if self._error is not None:
             raise self._error
-        return self._response
+        request = httpx.Request("POST", url)
+        return httpx.Response(self._status, request=request, json={
+            "choices": [{"message": {"content": self._content}}]
+        })
 
 
-def _fake_client(error=None, response=None):
-    return lambda *args, **kwargs: _FakeHttpClient(error=error, response=response)
+def _patch_async_client(monkeypatch, **kwargs):
+    instance = _FakeAsyncClient(**kwargs)
+    monkeypatch.setattr(groq.httpx, "AsyncClient", lambda *a, **k: instance)
+    return instance
 
 
 def test_database_outage_returns_clear_503(client, monkeypatch):
@@ -62,69 +70,6 @@ def test_a_failed_answer_is_rolled_back_not_half_saved(client, monkeypatch):
     client.post("/assistant/chat", json={"message": "Hi"})
     assert count_rows("assistant_messages") == 0
     assert count_rows("assistant_conversations") == 0
-
-
-def test_groq_timeout_falls_back_to_rules_and_never_crashes(client, monkeypatch):
-    monkeypatch.setattr(settings, "ASSISTANT_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
-
-    monkeypatch.setattr(groq.httpx, "Client", _fake_client(httpx.ReadTimeout("timed out")))
-    response = client.post("/assistant/chat", json={"message": "Gibberish zzqx unknown words"})
-    assert response.status_code == 200
-    assert response.json()["intent"] == "clarification"
-
-
-def test_rules_still_answer_when_groq_is_down(client, monkeypatch):
-    item = make_item(client)
-    monkeypatch.setattr(settings, "ASSISTANT_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
-
-    monkeypatch.setattr(groq.httpx, "Client", _fake_client(httpx.ConnectError("no route")))
-    response = client.post("/assistant/chat", json={"message": f"Do we need to buy more {item['item_code']}?"})
-    assert response.json()["intent"] == "risk"
-
-
-def test_only_the_latest_message_is_sent_to_the_language_model(client, monkeypatch):
-    sent = {}
-
-    def capture(message):
-        sent["message"] = message
-        return None
-
-    monkeypatch.setattr("app.assistant.engine.llm_enabled", lambda: True)
-    monkeypatch.setattr("app.assistant.engine.classify_with_llm", capture)
-    first = client.post("/assistant/chat", json={"message": "Tell me about Confidential Widget"}).json()
-    client.post("/assistant/chat", json={"message": "Wibble wobble frabjous", "conversation_id": first["conversation_id"]})
-    assert sent["message"] == "Wibble wobble frabjous"
-
-
-def test_llm_classifier_output_is_restricted_to_known_labels(monkeypatch):
-    monkeypatch.setattr(settings, "ASSISTANT_LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
-
-    class FakeResponse:
-        status_code = 200
-
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"choices": [{"message": {"content": '{"intents": ["risk", "delete_everything", "forecast"]}'}}]}
-
-    monkeypatch.setattr(groq.httpx, "Client", _fake_client(response=FakeResponse()))
-    assert groq.classify_with_llm("anything") == ["risk", "forecast"]
-
-
-def test_llm_disabled_by_default_makes_no_network_call(client, monkeypatch):
-    called = {"n": 0}
-
-    def spy_client(*args, **kwargs):
-        called["n"] += 1
-        raise AssertionError("network must not be used")
-
-    monkeypatch.setattr(groq.httpx, "Client", spy_client)
-    client.post("/assistant/chat", json={"message": "Unrecognised words here"})
-    assert called["n"] == 0
 
 
 def test_assistant_exposes_no_write_routes_for_inventory():
@@ -161,3 +106,65 @@ def test_api_key_is_never_echoed_in_responses(client, monkeypatch):
     monkeypatch.setattr(settings, "GROQ_API_KEY", "gsk_super_secret_key_value")
     for path in ("/", "/health", "/assistant/conversations", "/inventory"):
         assert "gsk_super_secret_key_value" not in client.get(path).text
+
+
+def test_groq_timeout_falls_back_to_rules_and_never_crashes(client, monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+    _patch_async_client(monkeypatch, error=httpx.ReadTimeout("timed out"))
+    response = client.post("/assistant/chat", json={"message": "Gibberish zzqx unknown words"})
+    assert response.status_code == 200
+    assert response.json()["intent"] == "clarification"
+
+
+def test_rules_still_answer_when_groq_is_down(client, monkeypatch):
+    item = make_item(client)
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+    _patch_async_client(monkeypatch, error=httpx.ConnectError("no route"))
+    response = client.post("/assistant/chat", json={"message": f"Do we need to buy more {item['item_code']}?"})
+    assert response.json()["intent"] == "risk"
+
+
+def test_groq_classifies_messages_the_rules_do_not_recognise(client, monkeypatch):
+    item = make_item(client)
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+    fake = _patch_async_client(monkeypatch, content='{"intent": "risk", "item_query": "' + item["item_code"] + '"}')
+    response = client.post("/assistant/chat", json={"message": "Is our fabric okay for the coming weeks?"})
+    body = response.json()
+    assert body["intent"] == "risk"
+    assert item["item_code"] in body["answer"]
+    assert len(fake.calls) == 1
+
+
+def test_only_the_latest_message_is_sent_to_groq(client, monkeypatch):
+    make_item(client)
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+    fake = _patch_async_client(monkeypatch, content='{"intent": "clarification", "item_query": ""}')
+    first = client.post("/assistant/chat", json={"message": "Tell me about FAB-001"}).json()
+    client.post("/assistant/chat", json={"message": "Wibble wobble frabjous", "conversation_id": first["conversation_id"]})
+    sent_text = fake.calls[-1]["json"]["messages"][1]["content"]
+    assert sent_text.endswith("Latest user message:\nWibble wobble frabjous")
+    assert "Previous conversation context:\n\n" in sent_text
+    assert "Tell me about FAB-001" not in sent_text
+
+
+def test_groq_unknown_intent_label_is_treated_as_clarification(client, monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "test-key")
+    _patch_async_client(monkeypatch, content='{"intent": "delete_everything", "item_query": ""}')
+    response = client.post("/assistant/chat", json={"message": "Wipe the warehouse clean"})
+    assert response.json()["intent"] == "clarification"
+
+
+def test_no_key_means_no_network_call(client, monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", None)
+    def forbidden(*a, **k):
+        raise AssertionError("network must not be used without a key")
+    monkeypatch.setattr(groq.httpx, "AsyncClient", forbidden)
+    response = client.post("/assistant/chat", json={"message": "Unrecognised words here"})
+    assert response.status_code == 200
+
+
+def test_api_key_is_not_leaked_when_groq_fails(client, monkeypatch):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "gsk_leak_check_value")
+    _patch_async_client(monkeypatch, error=httpx.ConnectError("boom gsk_leak_check_value"))
+    response = client.post("/assistant/chat", json={"message": "Something unclear here"})
+    assert "gsk_leak_check_value" not in response.text

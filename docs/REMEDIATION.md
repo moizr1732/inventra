@@ -51,9 +51,12 @@ synthetic consumption. It does not change on-hand quantities.
   small talk, follow-ups through the conversation's current item, ambiguity
   questions, multi-intent messages, what-if scenarios (never saved), refusal of
   write requests, and honest refusal of unsupported analyses.
-- **Language model (Groq).** Off by default (`ASSISTANT_LLM_ENABLED=false`).
-  When enabled it receives only the user's latest message and may return only
-  fixed intent labels. Any failure falls back to the rule-based path.
+- **Groq (unchanged).** `backend/app/services/groq_service.py` and its
+  configuration are identical to the original upload. The assistant calls the
+  existing `detect_intent` on each message that passes the safety checks, sends
+  it only the latest message, and merges its intent with the rule-based
+  understanding. Its `item_query` is resolved only when it names exactly one item.
+  If Groq is unavailable or unconfigured, the rule-based path answers.
 - **Conversation memory.** The summary is updated incrementally with a watermark,
   so older questions are no longer dropped after 30 messages.
 - **Removed.** The duplicate `app/api/main.py`, the broken `test_mistral.py`,
@@ -86,8 +89,8 @@ synthetic consumption. It does not change on-hand quantities.
 1. Reorder point is the calculated value, floored at the configured reorder level.
 2. Suggested order restores the reorder point; it does not fill to a maximum level.
 3. Overrides are keyed to the fixed 30-day period that contains their start date.
-4. The language model is off by default. Enabling it requires approval for
-   sending users' latest messages to an external API.
+4. Groq receives each user's latest message. Confirm this is acceptable under your
+   data-security rules; no database records or earlier conversation text are sent.
 5. Untracked history is treated as unknown, not zero.
 
 ## Still open

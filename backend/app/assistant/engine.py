@@ -13,6 +13,7 @@ Pipeline
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -23,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.assistant import answers as A
 from app.assistant.understanding import Understanding, find_item_tokens, understand
 from app.models import AssistantConversation, InventoryItem
-from app.services.groq_service import classify_with_llm, llm_enabled
+from app.services.groq_service import detect_intent
 
 logger = logging.getLogger("inventra.assistant")
 
@@ -137,6 +138,45 @@ def db_item_by_id(db: Session, item_id: int | None) -> InventoryItem | None:
     return item if item is not None and item.is_active else None
 
 
+GROQ_TO_ENGINE = {"inventory_summary": "inventory"}
+
+
+def _groq_classification(message: str) -> tuple[list[str], bool, str]:
+    """Run the existing Groq intent classifier on the latest message only.
+
+    Returns (intents, is_help, item_query). Any failure yields no intents, so the
+    rule-based understanding continues to answer.
+    """
+    try:
+        result = asyncio.run(detect_intent(message, ""))
+    except Exception:
+        logger.warning("Intent classifier call failed; continuing with rule-based understanding.")
+        return [], False, ""
+
+    label = result.get("intent", "clarification")
+    item_query = result.get("item_query") or ""
+    if label == "help":
+        return [], True, item_query
+    mapped = GROQ_TO_ENGINE.get(label, label)
+    return ([mapped] if mapped in INTENT_NAMES else []), False, item_query
+
+
+def _merge(rule_intents: list[str], groq_intents: list[str]) -> list[str]:
+    merged = list(rule_intents)
+    for intent in groq_intents:
+        if intent not in merged:
+            merged.append(intent)
+    return merged
+
+
+def _resolve_item_query(db: Session, item_query: str) -> list[InventoryItem]:
+    """Resolve an item named by the classifier, accepting only unambiguous full matches."""
+    active = list(db.scalars(select(InventoryItem).where(InventoryItem.is_active.is_(True)).order_by(InventoryItem.id)).all())
+    full_ids, _ = find_item_tokens(item_query, [(i.id, i.item_code, i.item_name) for i in active])
+    by_id = {i.id: i for i in active}
+    return [by_id[i] for i in full_ids[:1]]
+
+
 def handle_message(db: Session, conversation: AssistantConversation, message: str) -> EngineResult:
     u = understand(message)
 
@@ -174,6 +214,15 @@ def handle_message(db: Session, conversation: AssistantConversation, message: st
 
     intents = list(u.intents)
 
+    # 3a. Groq classification (existing service, unchanged). It sees only the latest
+    # message: no database records and no earlier conversation text are sent.
+    groq_intents, groq_help, groq_item_query = _groq_classification(message)
+    if groq_help and not intents and not items:
+        return EngineResult(CAPABILITIES_TEXT, "help", ["Inventra assistant"], conversation.context_item_id)
+    intents = _merge(intents, groq_intents)
+    if not items and groq_item_query:
+        items = _resolve_item_query(db, groq_item_query)
+
     # 3b. Follow-ups such as "What if demand increases by 20%?" apply to the current item.
     if not items and not ambiguous and intents and any(i in ("forecast", "planning", "scenario") for i in intents):
         current = db_item_by_id(db, conversation.context_item_id)
@@ -185,11 +234,6 @@ def handle_message(db: Session, conversation: AssistantConversation, message: st
         intents = ["inventory"]
     if u.explain and not intents:
         intents = ["risk"]
-
-    # 5. Optional language-model classification for messages the rules don't understand.
-    if not intents and not items and llm_enabled():
-        llm_intents = classify_with_llm(message) or []
-        intents = [i for i in llm_intents if i in INTENT_NAMES]
 
     if not intents:
         return EngineResult(UNKNOWN_REPLY, "clarification", ["Inventra assistant"], conversation.context_item_id)
